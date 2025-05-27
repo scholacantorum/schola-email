@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -24,7 +26,9 @@ const (
 // not have to have a Date: header; one will be automatically added.
 //
 // For this to work, the appropriate Google API credentials must exist in
-// $HOME/.config/gcloud/application_default_credentials.json.
+// $HOME/.config/gcloud/application_default_credentials.json.  Since $HOME
+// might not be set, there is a fallback to the first two components of $PWD
+// (i.e., usually /home/XXX or /Users/XXX).
 func Send(data []byte) (err error) {
 	var (
 		key  []byte
@@ -33,7 +37,7 @@ func Send(data []byte) (err error) {
 		svc  *gmail.Service
 		msg  *gmail.Message
 	)
-	if key, err = os.ReadFile(os.Getenv("HOME") + "/.config/gcloud/application_default_credentials.json"); err != nil {
+	if key, err = os.ReadFile(home() + "/.config/gcloud/application_default_credentials.json"); err != nil {
 		return fmt.Errorf("sendmail: can't read Google API key: %w", err)
 	}
 	if conf, err = google.JWTConfigFromJSON(key, gmail.GmailSendScope); err != nil {
@@ -49,4 +53,16 @@ func Send(data []byte) (err error) {
 		return fmt.Errorf("sendmail: %w", err)
 	}
 	return nil
+}
+
+func home() string {
+	if h := os.Getenv("HOME"); h != "" {
+		return h
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		if parts := strings.Split(cwd, string(filepath.Separator)); parts[0] == "" && len(parts) >= 3 {
+			return strings.Join(parts[0:3], string(filepath.Separator))
+		}
+	}
+	return "" // we won't find the JSON file; the mail send will fail
 }
